@@ -8,8 +8,6 @@ use dioxus::desktop::WindowBuilder;
 #[cfg(feature = "desktop")]
 use burn::tensor::Tensor;                 // Core tensor (multi-dimensional array) type
 #[cfg(feature = "desktop")]
-use burn::nn::Linear;                     // Neural network modules: Linear layer
-#[cfg(feature = "desktop")]
 use burn::module::Module;                 // Module trait
 #[cfg(feature = "desktop")]
 use burn::tensor::backend::Backend;       // Backend abstraction for tensor operations

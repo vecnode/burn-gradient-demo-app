@@ -106,7 +106,15 @@ pub fn DesktopApp() -> Element {
                     let new_state = !COGNITIVE_CYCLE_STATE.load(Ordering::SeqCst);
                     COGNITIVE_CYCLE_STATE.store(new_state, Ordering::SeqCst);
                     cycle_state.set(new_state);
-                    println!("cognitive_cycle_state={}", new_state);
+                    let msg = format!("[Desktop] Cognitive Cycle {}: cognitive_cycle_state={}", 
+                        if new_state { "STARTED" } else { "STOPPED" }, new_state);
+                    println!("{}", msg);
+                    eprintln!("{}", msg);
+                    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("/tmp/pattern-clock-desktop.log") {
+                        use std::io::Write;
+                        let _ = writeln!(file, "{}", msg);
+                        let _ = file.flush();
+                    }
                 },
                 if cycle_state() { "Stop CogCycle" } else { "Start CogCycle" }
             }

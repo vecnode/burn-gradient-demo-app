@@ -49,11 +49,11 @@ echo "  - Open desktop window"
 echo "  - Connect to web server on port 8080"
 echo ""
 if command -v gnome-terminal >/dev/null 2>&1; then
-    gnome-terminal --title "Desktop App" -- bash -c "cd '$SCRIPT_DIR' && dx serve --platform desktop 2>&1 | tee /tmp/pattern-clock-desktop.log; exec bash" &
+    gnome-terminal --title "Desktop App" -- bash -c "cd '$SCRIPT_DIR' && dx serve --platform desktop >> /tmp/pattern-clock-desktop.log 2>&1 & DX_PID=\$!; tail -f /tmp/pattern-clock-desktop.log & TAIL_PID=\$!; trap 'kill \$DX_PID \$TAIL_PID 2>/dev/null' EXIT INT TERM; wait \$DX_PID; kill \$TAIL_PID 2>/dev/null; exec bash" &
 elif command -v xterm >/dev/null 2>&1; then
-    xterm -T "Desktop App" -e "cd '$SCRIPT_DIR' && dx serve --platform desktop 2>&1 | tee /tmp/pattern-clock-desktop.log; exec bash" &
+    xterm -T "Desktop App" -e "cd '$SCRIPT_DIR' && dx serve --platform desktop >> /tmp/pattern-clock-desktop.log 2>&1 & DX_PID=\$!; tail -f /tmp/pattern-clock-desktop.log & TAIL_PID=\$!; trap 'kill \$DX_PID \$TAIL_PID 2>/dev/null' EXIT INT TERM; wait \$DX_PID; kill \$TAIL_PID 2>/dev/null; exec bash" &
 else
-    dx serve --platform desktop 2>&1 | tee /tmp/pattern-clock-desktop.log &
+    dx serve --platform desktop >> /tmp/pattern-clock-desktop.log 2>&1 & DX_PID=$!; tail -f /tmp/pattern-clock-desktop.log & TAIL_PID=$!; trap "kill \$DX_PID \$TAIL_PID 2>/dev/null" EXIT INT TERM; wait $DX_PID; kill $TAIL_PID 2>/dev/null &
 fi
 
 echo ""

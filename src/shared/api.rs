@@ -224,16 +224,3 @@ pub async fn get_agent_status(id: u8) -> Result<String, ServerFnError> {
     }
 }
 
-/// Process data through any agent (dynamic routing, forwards to desktop app)
-#[post("/api/agents/:id/process")]
-pub async fn process_agent_dynamic(id: u8, data: String) -> Result<String, ServerFnError> {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        forward_to_desktop_app(&format!("http://localhost:8081/api/agents/{}/process", id), &data).await
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        Err(ServerFnError::new("Agent endpoints not available in WASM"))
-    }
-}
-

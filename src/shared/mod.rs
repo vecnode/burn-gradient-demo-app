@@ -50,21 +50,6 @@ pub fn SystemInfo() -> Element {
     }
 }
 
-/// Helper function to convert markdown to HTML
-pub fn markdown_to_html(markdown: &str) -> String {
-    use pulldown_cmark::{Parser, Options, html};
-    let mut options = Options::empty();
-    options.insert(Options::ENABLE_STRIKETHROUGH);
-    options.insert(Options::ENABLE_TABLES);
-    options.insert(Options::ENABLE_FOOTNOTES);
-    options.insert(Options::ENABLE_TASKLISTS);
-    
-    let parser = Parser::new_ext(markdown, options);
-    let mut html_output = String::new();
-    html::push_html(&mut html_output, parser);
-    html_output
-}
-
 /// Get system information (CPU, GPU, processor) using native Rust only
 #[get("/api/system/info")]
 pub async fn get_system_info() -> Result<String, ServerFnError> {

@@ -66,24 +66,4 @@ impl PatternClockMCP {
     pub async fn call_get_random_number(&self) -> String {
         self.get_random_number().await
     }
-
-    /// Process agent directly (for use by desktop app)
-    pub async fn call_process_agent(&self, agent_id: u8, data: String) -> String {
-        if agent_id < 1 || agent_id > 5 {
-            return format!("Error: agent_id must be between 1 and 5, got {}", agent_id);
-        }
-
-        if let Err(e) = ensure_agents_initialized().await {
-            return format!("Error: Failed to initialize agents: {}", e);
-        }
-
-        if let Some(actor_ref) = get_agent(agent_id) {
-            actor_ref.send_message(AgentMessage::ProcessData {
-                data: data.clone(),
-            });
-            format!("Message queued for Agent{}: {}", agent_id, data)
-        } else {
-            format!("Error: Agent{} is not available", agent_id)
-        }
-    }
 }
