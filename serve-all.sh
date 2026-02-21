@@ -27,11 +27,11 @@ echo "This will start:"
 echo "  - HTTP server on port 8080"
 echo ""
 if command -v gnome-terminal >/dev/null 2>&1; then
-    gnome-terminal --title "Web Server" -- bash -c "cd '$SCRIPT_DIR' && dx serve 2>&1 | grep -v '\[200\] /api/messages/stream' | tee /tmp/pattern-clock-web.log; exec bash" &
+    gnome-terminal --title "Web Server" -- bash -c "cd '$SCRIPT_DIR' && dx serve 2>&1 | grep --line-buffered -v '/api/messages/stream' | tee /tmp/pattern-clock-web.log; exec bash" &
 elif command -v xterm >/dev/null 2>&1; then
-    xterm -T "Web Server" -e "cd '$SCRIPT_DIR' && dx serve 2>&1 | grep -v '\[200\] /api/messages/stream' | tee /tmp/pattern-clock-web.log; exec bash" &
+    xterm -T "Web Server" -e "cd '$SCRIPT_DIR' && dx serve 2>&1 | grep --line-buffered -v '/api/messages/stream' | tee /tmp/pattern-clock-web.log; exec bash" &
 else
-    dx serve 2>&1 | grep -v '\[200\] /api/messages/stream' | tee /tmp/pattern-clock-web.log &
+    dx serve 2>&1 | grep --line-buffered -v '/api/messages/stream' | tee /tmp/pattern-clock-web.log &
 fi
 
 # Wait for web server to fully start
