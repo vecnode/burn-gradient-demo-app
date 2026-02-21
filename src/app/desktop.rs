@@ -15,6 +15,10 @@ use std::io::Write;
 
 #[cfg(feature = "desktop")]
 use crate::shared::{SystemInfo, echo_server};
+#[cfg(feature = "desktop")]
+use crate::agents::ensure_agents_initialized;
+#[cfg(feature = "desktop")]
+use crate::app::desktop_server;
 
 // Reusable HTTP client for all desktop-to-web communication
 // Reduces connection overhead and improves reliability
@@ -48,6 +52,32 @@ const MAIN_CSS: Asset = asset!("/assets/main.css");
 #[component]
 pub fn DesktopApp() -> Element {
     let mut cycle_state = use_signal(|| COGNITIVE_CYCLE_STATE.load(Ordering::SeqCst));
+    
+    // Initialize agents and start desktop HTTP server on startup
+    use_effect(move || {
+        spawn(async move {
+            // Small delay to ensure desktop app is fully initialized
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            
+            // Initialize agents in desktop app
+            if let Err(e) = ensure_agents_initialized().await {
+                eprintln!("[Desktop] Failed to initialize agents: {}", e);
+            } else {
+                println!("[Desktop] Agents initialized successfully");
+                eprintln!("[Desktop] Agents initialized successfully");
+            }
+            
+            // Start desktop HTTP server for agent endpoints (runs in background)
+            spawn(async move {
+                // Small delay before starting server
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                if let Err(e) = desktop_server::start_desktop_server().await {
+                    eprintln!("[Desktop Server] Error: {}", e);
+                    println!("[Desktop Server] Error: {}", e);
+                }
+            });
+        });
+    });
     
     use_effect(move || {
         spawn(async move {
