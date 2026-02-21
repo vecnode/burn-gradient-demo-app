@@ -22,6 +22,19 @@
     <script type="text/javascript">
       // Polling/queuing system removed - web app now calls MCP tools directly via Dioxus
       console.log('Web app loaded - MCP client ready');
+      console.log('Checking if Dioxus is loaded...');
+      
+      // Check if Dioxus WASM is loaded
+      window.addEventListener('load', function() {
+        console.log('Window loaded, checking for Dioxus...');
+        setTimeout(function() {
+          if (window.__DIOXUS__) {
+            console.log('✓ Dioxus found:', window.__DIOXUS__);
+          } else {
+            console.error('✗ Dioxus not found - WASM may not be loaded');
+          }
+        }, 2000);
+      });
       
       // Wait for both DOM and vis library to be ready
       function initTimeline() {

@@ -8,9 +8,28 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 #[cfg(feature = "desktop")]
 use burn::backend::{Autodiff, wgpu::Wgpu};
+#[cfg(feature = "desktop")]
+use std::sync::OnceLock;
+#[cfg(feature = "desktop")]
+use std::io::Write;
 
 #[cfg(feature = "desktop")]
 use crate::shared::{SystemInfo, echo_server};
+
+// Reusable HTTP client for all desktop-to-web communication
+// Reduces connection overhead and improves reliability
+#[cfg(feature = "desktop")]
+static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+
+#[cfg(feature = "desktop")]
+fn get_http_client() -> &'static reqwest::Client {
+    HTTP_CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(5))
+            .build()
+            .expect("Failed to create HTTP client")
+    })
+}
 
 // Global cognitive cycle state
 #[cfg(feature = "desktop")]
@@ -74,19 +93,56 @@ pub fn DesktopApp() -> Element {
             width: "40%",
             button {
                 onclick: move |_| {
-                    println!("Building LSTM model");
-                    type Backend = Autodiff<Wgpu>;
-                    let device = Default::default();
-                    let config = crate::lstm::LstmConfig::default();
-                    let lstm = crate::lstm::Lstm::<Backend>::new(config, &device);
-                    println!("{:#?}", lstm);
+                    // Write to log file that serve-all.sh monitors (most reliable)
+                    let msg = "[Desktop] ========================================\n[Desktop] Building LSTM model\n[Desktop] ========================================";
+                    println!("{}", msg);
+                    eprintln!("{}", msg);
+                    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("/tmp/pattern-clock-desktop.log") {
+                        use std::io::Write;
+                        let _ = writeln!(file, "{}", msg);
+                        let _ = file.flush();
+                    }
+                    
+                    spawn(async move {
+                        type Backend = Autodiff<Wgpu>;
+                        let device = Default::default();
+                        let config = crate::lstm::LstmConfig::default();
+                        let lstm = crate::lstm::Lstm::<Backend>::new(config, &device);
+                        let result_msg = format!("[Desktop] LSTM model built successfully:\n{:#?}", lstm);
+                        println!("{}", result_msg);
+                        eprintln!("{}", result_msg);
+                        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("/tmp/pattern-clock-desktop.log") {
+                            use std::io::Write;
+                            let _ = writeln!(file, "{}", result_msg);
+                            let _ = file.flush();
+                        }
+                    });
                 },
                 "Build LSTM"
             }
             button {
                 onclick: move |_| {
-                    println!("Computing tensor gradients");
-                    crate::burn_tensor_example();
+                    // Write to log file that serve-all.sh monitors (most reliable)
+                    let msg = "[Desktop] ========================================\n[Desktop] Computing tensor gradients\n[Desktop] ========================================";
+                    println!("{}", msg);
+                    eprintln!("{}", msg);
+                    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("/tmp/pattern-clock-desktop.log") {
+                        use std::io::Write;
+                        let _ = writeln!(file, "{}", msg);
+                        let _ = file.flush();
+                    }
+                    
+                    spawn(async move {
+                        crate::burn_tensor_example();
+                        let result_msg = "[Desktop] Tensor gradients computed successfully";
+                        println!("{}", result_msg);
+                        eprintln!("{}", result_msg);
+                        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("/tmp/pattern-clock-desktop.log") {
+                            use std::io::Write;
+                            let _ = writeln!(file, "{}", result_msg);
+                            let _ = file.flush();
+                        }
+                    });
                 },
                 "Compute Tensor Gradients"
             }
@@ -102,6 +158,64 @@ pub fn DesktopApp() -> Element {
             }
         }
         DesktopMCP {}
+        br {}
+        div {
+            id: "app-header",
+            width: "40%",
+            p {
+                font_size: "12px",
+                "HTTP Communication Test - Send to Web Browser"
+            }
+            TestButton {}
+        }
+    }
+}
+
+#[cfg(feature = "desktop")]
+#[component]
+fn TestButton() -> Element {
+    let mut status_msg = use_signal(|| String::new());
+    
+    rsx! {
+        button {
+            onclick: move |_| {
+                let mut status = status_msg;
+                
+                spawn(async move {
+                    let test_msg = "Hello from desktop app - Test message!";
+                    
+                    // Use shared HTTP client for efficient connection reuse
+                    let client = get_http_client();
+                    let json_body = serde_json::json!({"message": test_msg});
+                    
+                    match client.post("http://localhost:8080/api/messages/send")
+                        .header("Content-Type", "application/json")
+                        .json(&json_body)
+                        .send()
+                        .await {
+                        Ok(resp) => {
+                            let http_status = resp.status();
+                            if http_status.is_success() {
+                                status.set("✓ Sent!".to_string());
+                            } else {
+                                let error_msg = resp.text().await.unwrap_or_else(|_| format!("{}", http_status));
+                                status.set(format!("✗ Error: {} - {}", http_status, error_msg));
+                            }
+                        }
+                        Err(e) => {
+                            status.set(format!("✗ Failed: {}", e));
+                        }
+                    }
+                });
+            },
+            "Send Test Message to Browser"
+        }
+        if !status_msg().is_empty() {
+            p {
+                color: if status_msg().starts_with("✓") { "#4caf50" } else { "#f44336" },
+                "{status_msg}"
+            }
+        }
     }
 }
 
@@ -146,11 +260,10 @@ fn DesktopEcho() -> Element {
 }
 
 /// MCP Server component for testing MCP tools
-/// Desktop app can call MCP tools directly (same as web app)
+/// Desktop app calls MCP tools directly and prints to terminal
 #[cfg(feature = "desktop")]
 #[component]
 fn DesktopMCP() -> Element {
-    let mut mcp_response = use_signal(|| String::new());
     let mut is_loading = use_signal(|| false);
 
     rsx! {
@@ -159,19 +272,12 @@ fn DesktopMCP() -> Element {
                 disabled: is_loading(),
                 onclick: move |_| {
                     is_loading.set(true);
-                    mcp_response.set(String::new());
                     spawn(async move {
-                        // Call MCP tool directly via server function
-                        match crate::shared::mcp_example_tool().await {
-                            Ok(result) => {
-                                mcp_response.set(result);
-                                is_loading.set(false);
-                            }
-                            Err(e) => {
-                                mcp_response.set(format!("Error: {}", e));
-                                is_loading.set(false);
-                            }
-                        }
+                        // Call MCP tool directly and print to terminal
+                        let mcp_server = crate::mcp_server::PatternClockMCP::new();
+                        let result = mcp_server.call_example_tool().await;
+                        println!("[MCP] Example Tool Result: {}", result);
+                        is_loading.set(false);
                     });
                 },
                 if is_loading() { "Loading..." } else { "Call MCP Example Tool" }
@@ -182,30 +288,15 @@ fn DesktopMCP() -> Element {
                 disabled: is_loading(),
                 onclick: move |_| {
                     is_loading.set(true);
-                    mcp_response.set(String::new());
                     spawn(async move {
-                        // Call MCP tool directly via server function
-                        match crate::shared::mcp_random_number().await {
-                            Ok(result) => {
-                                mcp_response.set(result);
-                                is_loading.set(false);
-                            }
-                            Err(e) => {
-                                mcp_response.set(format!("Error: {}", e));
-                                is_loading.set(false);
-                            }
-                        }
+                        // Call MCP tool directly and print to terminal
+                        let mcp_server = crate::mcp_server::PatternClockMCP::new();
+                        let result = mcp_server.call_get_random_number().await;
+                        println!("[MCP] Random Number Result: {}", result);
+                        is_loading.set(false);
                     });
                 },
-                if is_loading() { "Loading..." } else { "Get Random Number" }
-            }
-        }
-        if !mcp_response().is_empty() {
-            div {
-                p {
-                    "MCP Response: "
-                    i { "{mcp_response}" }
-                }
+                if is_loading() { "Loading..." } else { "Get MCP Random Number" }
             }
         }
     }

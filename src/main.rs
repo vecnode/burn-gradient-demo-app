@@ -99,6 +99,14 @@ pub fn burn_tensor_example() {
     let grads = tmp.backward();
     // Extract the gradient of tensor y from the computed gradients (how much the output changes w.r.t. y)
     let y_grad = y.grad(&grads).unwrap();
-    // Print the gradient tensor to the console
-    println!("{y_grad}");
+    // Print the gradient tensor to the console and log file
+    let grad_msg = format!("[Desktop] Gradient tensor:\n{y_grad}");
+    println!("{}", grad_msg);
+    eprintln!("{}", grad_msg);
+    // Also write to log file
+    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("/tmp/pattern-clock-desktop.log") {
+        use std::io::Write;
+        let _ = writeln!(file, "{}", grad_msg);
+        let _ = file.flush();
+    }
 }
