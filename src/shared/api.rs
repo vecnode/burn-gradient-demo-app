@@ -97,7 +97,7 @@ pub async fn echo_server(input: String) -> Result<String, ServerFnError> {
     #[cfg(target_arch = "wasm32")]
     {
         // WASM stub - this should never be called on client
-        Ok(input)
+    Ok(input)
     }
 }
 
@@ -112,7 +112,7 @@ pub async fn process_agent1(data: String) -> Result<String, ServerFnError> {
     {
         eprintln!("[Web Server] process_agent1 called with data: '{}' (len: {})", data, data.len());
         println!("[Web Server] process_agent1 called with data: '{}' (len: {})", data, data.len());
-        
+    
         if data.is_empty() {
             eprintln!("[Web Server] ERROR: data parameter is empty!");
             println!("[Web Server] ERROR: data parameter is empty!");
@@ -204,7 +204,7 @@ pub async fn get_agent_status(id: u8) -> Result<String, ServerFnError> {
                             Err(ServerFnError::new(format!("Failed to parse JSON response: {}", e)))
                         }
                     }
-                } else {
+    } else {
                     let error_text = match resp.text().await {
                         Ok(text) => text,
                         Err(_) => format!("{}", status)

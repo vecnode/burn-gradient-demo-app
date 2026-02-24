@@ -17,7 +17,6 @@ use burn::backend::{Autodiff, wgpu::Wgpu}; // Backend types: Autodiff wrapper an
 use burn::tensor::Distribution;           // Distribution for random tensor generation
 
 // Modules
-mod mcp_server;
 mod agents;
 #[cfg(feature = "desktop")]
 mod lstm;

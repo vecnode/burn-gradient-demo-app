@@ -142,10 +142,10 @@ pub fn DesktopApp() -> Element {
                     }
                     
                     spawn(async move {
-                        type Backend = Autodiff<Wgpu>;
-                        let device = Default::default();
-                        let config = crate::lstm::LstmConfig::default();
-                        let lstm = crate::lstm::Lstm::<Backend>::new(config, &device);
+                    type Backend = Autodiff<Wgpu>;
+                    let device = Default::default();
+                    let config = crate::lstm::LstmConfig::default();
+                    let lstm = crate::lstm::Lstm::<Backend>::new(config, &device);
                         let result_msg = format!("[Desktop] LSTM model built successfully:\n{:#?}", lstm);
                         println!("{}", result_msg);
                         eprintln!("{}", result_msg);
@@ -186,16 +186,6 @@ pub fn DesktopApp() -> Element {
             }
         }
         DesktopEcho {}
-        br {}
-        div {
-            id: "app-header",
-            width: "40%",
-            p {
-                font_size: "12px",
-                "MCP Server Test"
-            }
-        }
-        DesktopMCP {}
         br {}
         div {
             id: "app-header",
@@ -297,45 +287,3 @@ fn DesktopEcho() -> Element {
     }
 }
 
-/// MCP Server component for testing MCP tools
-/// Desktop app calls MCP tools directly and prints to terminal
-#[cfg(feature = "desktop")]
-#[component]
-fn DesktopMCP() -> Element {
-    let mut is_loading = use_signal(|| false);
-
-    rsx! {
-        div {
-            button {
-                disabled: is_loading(),
-                onclick: move |_| {
-                    is_loading.set(true);
-                    spawn(async move {
-                        // Call MCP tool directly and print to terminal
-                        let mcp_server = crate::mcp_server::PatternClockMCP::new();
-                        let result = mcp_server.call_example_tool().await;
-                        println!("[MCP] Example Tool Result: {}", result);
-                        is_loading.set(false);
-                    });
-                },
-                if is_loading() { "Loading..." } else { "Call MCP Example Tool" }
-            }
-        }
-        div {
-            button {
-                disabled: is_loading(),
-                onclick: move |_| {
-                    is_loading.set(true);
-                    spawn(async move {
-                        // Call MCP tool directly and print to terminal
-                        let mcp_server = crate::mcp_server::PatternClockMCP::new();
-                        let result = mcp_server.call_get_random_number().await;
-                        println!("[MCP] Random Number Result: {}", result);
-                        is_loading.set(false);
-                    });
-                },
-                if is_loading() { "Loading..." } else { "Get MCP Random Number" }
-            }
-        }
-    }
-}
