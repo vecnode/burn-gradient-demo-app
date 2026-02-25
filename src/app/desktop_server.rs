@@ -97,7 +97,7 @@ async fn process_agent_handler(
         })?;
     
     if let Some(actor_ref) = get_agent(id) {
-        actor_ref.send_message(AgentMessage::ProcessData {
+        let _ = actor_ref.send_message(AgentMessage::ProcessData {
             data: data.to_string(),
         });
         let response = json!({
@@ -130,7 +130,7 @@ async fn get_agent_status_handler(
     }
     
     if let Some(actor_ref) = get_agent(id) {
-        actor_ref.send_message(AgentMessage::GetStatus);
+        let _ = actor_ref.send_message(AgentMessage::GetStatus);
         Ok(Json(json!({
             "status": "success",
             "message": format!("Status request sent to Agent{}", id)

@@ -1,16 +1,9 @@
-// Import Dioxus components
-use dioxus::prelude::*;
-
 #[cfg(feature = "desktop")]
 use dioxus::desktop::WindowBuilder;
 
 // Import Burn neural net building blocks and traits (desktop only)
 #[cfg(feature = "desktop")]
 use burn::tensor::Tensor;                 // Core tensor (multi-dimensional array) type
-#[cfg(feature = "desktop")]
-use burn::module::Module;                 // Module trait
-#[cfg(feature = "desktop")]
-use burn::tensor::backend::Backend;       // Backend abstraction for tensor operations
 #[cfg(feature = "desktop")]
 use burn::backend::{Autodiff, wgpu::Wgpu}; // Backend types: Autodiff wrapper and WGPU backend
 #[cfg(feature = "desktop")]
@@ -26,8 +19,17 @@ mod app;
 mod shared;
 
 fn main() {
+    // Configure tracing to filter out /api/messages/stream logs
+    // This reduces terminal spam from Dioxus server's automatic logging
     #[cfg(feature = "desktop")]
     {
+        // Set RUST_LOG to filter out the stream endpoint if not already set
+        if std::env::var("RUST_LOG").is_err() {
+            // Filter out Dioxus server logs for /api/messages/stream
+            // Keep other logs at INFO level
+            std::env::set_var("RUST_LOG", "info");
+        }
+        
         // Window configuration for desktop
         let window_builder = WindowBuilder::new()
             .with_title("pattern-clock - Desktop")

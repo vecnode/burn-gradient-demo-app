@@ -15,11 +15,7 @@ API Tests in folder `bruno/`
 # ===============================================
 # Ubuntu
 # ===============================================
-# Launches Desktop and Web
-./serve_all.sh
 
-# Web server http://127.0.0.1:8080
-dx serve
 # Desktop app
 dx serve --platform desktop
 # ===============================================

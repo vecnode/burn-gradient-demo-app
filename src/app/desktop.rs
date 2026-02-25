@@ -10,15 +10,13 @@ use std::time::Duration;
 use burn::backend::{Autodiff, wgpu::Wgpu};
 #[cfg(feature = "desktop")]
 use std::sync::OnceLock;
-#[cfg(feature = "desktop")]
-use std::io::Write;
 
 #[cfg(feature = "desktop")]
 use crate::shared::{SystemInfo, echo_server};
 #[cfg(feature = "desktop")]
 use crate::agents::ensure_agents_initialized;
 #[cfg(feature = "desktop")]
-use crate::app::desktop_server;
+use crate::app::{desktop_server, web_server};
 
 // Reusable HTTP client for all desktop-to-web communication
 // Reduces connection overhead and improves reliability
@@ -41,6 +39,9 @@ static COGNITIVE_CYCLE_STATE: AtomicBool = AtomicBool::new(false);
 // Global cognitive cycle counter
 #[cfg(feature = "desktop")]
 static COGNITIVE_CYCLE_COUNTER: AtomicU64 = AtomicU64::new(0);
+// Guard to prevent duplicate initialization
+#[cfg(feature = "desktop")]
+static INITIALIZATION_STARTED: AtomicBool = AtomicBool::new(false);
 
 #[cfg(feature = "desktop")]
 const FAVICON: Asset = asset!("/assets/favicon.ico");
@@ -53,9 +54,16 @@ const MAIN_CSS: Asset = asset!("/assets/main.css");
 pub fn DesktopApp() -> Element {
     let mut cycle_state = use_signal(|| COGNITIVE_CYCLE_STATE.load(Ordering::SeqCst));
     
-    // Initialize agents and start desktop HTTP server on startup
+    // Initialize agents and start desktop HTTP server on startup (only once)
     use_effect(move || {
         spawn(async move {
+            // Use atomic flag INSIDE the spawned task to ensure initialization only happens once
+            // This prevents race conditions where multiple use_effect calls spawn tasks before the flag is set
+            if INITIALIZATION_STARTED.swap(true, Ordering::SeqCst) {
+                // Already initialized, skip
+                return;
+            }
+            
             // Small delay to ensure desktop app is fully initialized
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             
@@ -67,10 +75,20 @@ pub fn DesktopApp() -> Element {
                 eprintln!("[Desktop] Agents initialized successfully");
             }
             
-            // Start desktop HTTP server for agent endpoints (runs in background)
+            // Start web server on port 8080 (runs in background)
             spawn(async move {
                 // Small delay before starting server
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                if let Err(e) = web_server::start_web_server().await {
+                    eprintln!("[Web Server] Error: {}", e);
+                    println!("[Web Server] Error: {}", e);
+                }
+            });
+            
+            // Start desktop HTTP server for agent endpoints on port 8081 (runs in background)
+            spawn(async move {
+                // Small delay before starting server
+                tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
                 if let Err(e) = desktop_server::start_desktop_server().await {
                     eprintln!("[Desktop Server] Error: {}", e);
                     println!("[Desktop Server] Error: {}", e);
@@ -195,6 +213,27 @@ pub fn DesktopApp() -> Element {
                 "HTTP Communication Test - Send to Web Browser"
             }
             TestButton {}
+        }
+        br {}
+        div {
+            id: "web-interface-container",
+            width: "100%",
+            height: "600px",
+            border: "1px solid #ccc",
+            border_radius: "5px",
+            margin_top: "20px",
+            h3 {
+                font_size: "14px",
+                margin: "10px",
+                "Web Interface (Embedded)"
+            }
+            iframe {
+                src: "http://localhost:8080",
+                width: "100%",
+                height: "550px",
+                border: "none",
+                style: "border-radius: 0 0 5px 5px;",
+            }
         }
     }
 }

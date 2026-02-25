@@ -33,7 +33,7 @@ wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
 
 [features]
-default = ["web"]
+default = ["desktop"]
 web = ["dioxus/web"]
 desktop = ["dioxus/desktop", "axum", "tower", "tower-http"]
 mobile = ["dioxus/mobile"]

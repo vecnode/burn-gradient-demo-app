@@ -1,15 +1,25 @@
 // Shared components and utilities used by both desktop and web platforms
 
 pub mod api;
-pub mod communication;
 
 use dioxus::prelude::*;
 use serde_json;
 
 // Re-export API functions for convenience
 pub use api::*;
-// Re-export communication functions
-pub use communication::{send_message, stream_messages};
+
+/// Stream messages endpoint - stub for Dioxus server compatibility
+/// Returns empty immediately - prevents 500 errors during build
+/// NOTE: Dioxus server will still log requests to this endpoint (normal behavior)
+/// The logging cannot be disabled without modifying Dioxus itself
+/// This function does nothing to minimize impact
+#[get("/api/messages/stream")]
+pub async fn stream_messages() -> Result<String, ServerFnError> {
+    // Return empty immediately - no processing, no errors
+    // Dioxus server logs all server function requests by default
+    // This is expected behavior and cannot be disabled
+    Ok(String::new())
+}
 
 /// System information component displaying CPU, GPU, and stack info
 #[component]
