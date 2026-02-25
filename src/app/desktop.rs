@@ -16,7 +16,7 @@ use crate::shared::{SystemInfo, echo_server};
 #[cfg(feature = "desktop")]
 use crate::agents::ensure_agents_initialized;
 #[cfg(feature = "desktop")]
-use crate::app::{desktop_server, web_server};
+use crate::app::desktop_server;
 
 // Reusable HTTP client for all desktop-to-web communication
 // Reduces connection overhead and improves reliability
@@ -74,16 +74,6 @@ pub fn DesktopApp() -> Element {
                 println!("[Desktop] Agents initialized successfully");
                 eprintln!("[Desktop] Agents initialized successfully");
             }
-            
-            // Start web server on port 8080 (runs in background)
-            spawn(async move {
-                // Small delay before starting server
-                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                if let Err(e) = web_server::start_web_server().await {
-                    eprintln!("[Web Server] Error: {}", e);
-                    println!("[Web Server] Error: {}", e);
-                }
-            });
             
             // Start desktop HTTP server for agent endpoints on port 8081 (runs in background)
             spawn(async move {
