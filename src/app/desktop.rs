@@ -153,27 +153,6 @@ pub fn DesktopApp() -> Element {
             }
         }
         DesktopEcho {}
-        br {}
-        div {
-            id: "web-interface-container",
-            width: "100%",
-            height: "600px",
-            border: "1px solid #ccc",
-            border_radius: "5px",
-            margin_top: "20px",
-            h3 {
-                font_size: "14px",
-                margin: "10px",
-                "Web Interface (Embedded)"
-            }
-            iframe {
-                src: "http://localhost:8080",
-                width: "100%",
-                height: "550px",
-                border: "none",
-                style: "border-radius: 0 0 5px 5px;",
-            }
-        }
     }
 }
 

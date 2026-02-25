@@ -1,5 +1,6 @@
 # pattern-clock
-(ongoing)
+
+Lightweight desktop ML cross-platform application.
 
 ## Dependencies
 
@@ -17,7 +18,7 @@ API Tests in folder `bruno/`
 # ===============================================
 
 # Desktop app
-dx serve --platform desktop
+dx serve
 # ===============================================
 ```
 

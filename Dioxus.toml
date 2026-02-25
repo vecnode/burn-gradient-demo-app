@@ -11,3 +11,7 @@ resizable = false
 # HTML title tag content
 title = "pattern-clock"
 
+# Skip WASM builds - desktop-only app
+# When using --platform desktop, Dioxus will skip WASM compilation
+[web.app]
+skip_assets = true

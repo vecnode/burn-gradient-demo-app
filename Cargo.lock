@@ -2480,15 +2480,12 @@ dependencies = [
  "http",
  "infer",
  "jni",
- "js-sys",
  "ndk",
  "ndk-context",
  "ndk-sys",
  "percent-encoding",
  "thiserror 2.0.18",
  "tokio",
- "wasm-bindgen-futures",
- "web-sys",
 ]
 
 [[package]]
@@ -2723,7 +2720,6 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "wasm-streams",
- "web-sys",
  "xxhash-rust",
 ]
 
@@ -6232,17 +6228,12 @@ dependencies = [
  "axum 0.7.9",
  "burn",
  "dioxus",
- "getrandom 0.2.17",
- "js-sys",
  "ractor",
  "serde",
  "serde_json",
  "tokio",
  "tower 0.4.13",
  "tower-http 0.5.2",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
 ]
 
 [[package]]

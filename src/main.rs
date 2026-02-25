@@ -27,10 +27,12 @@ fn main() {
             std::env::set_var("RUST_LOG", "info");
         }
         
-        // Window configuration for desktop
+        // Window configuration for desktop - HD size (1200x800)
+        use dioxus::desktop::trayicon::dpi::LogicalSize;
         let window_builder = WindowBuilder::new()
             .with_title("pattern-clock - Desktop")
-            .with_always_on_top(false);
+            .with_always_on_top(false)
+            .with_inner_size(LogicalSize::new(1200.0, 800.0));
         let config = dioxus::desktop::Config::default().with_window(window_builder);
         dioxus::LaunchBuilder::new()
             .with_cfg(config)
