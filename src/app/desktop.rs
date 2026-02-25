@@ -313,7 +313,7 @@ fn MLOperationsTab() -> Element {
                     width: "fit-content",
                     onclick: move |_| {
                         // Write to log file that serve-all.sh monitors (most reliable)
-                        let msg = "[Desktop] ========================================\n[Desktop] Building LSTM model\n[Desktop] ========================================";
+                        let msg = "[Desktop] ========================================\n[Desktop] Building VAE model\n[Desktop] ========================================";
                         eprintln!("{}", msg);
                         if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("/tmp/pattern-clock-desktop.log") {
                             use std::io::Write;
@@ -324,9 +324,9 @@ fn MLOperationsTab() -> Element {
                         spawn(async move {
                             type Backend = Autodiff<Wgpu>;
                             let device = Default::default();
-                            let config = crate::lstm::LstmConfig::default();
-                            let lstm = crate::lstm::Lstm::<Backend>::new(config, &device);
-                            let result_msg = format!("[Desktop] LSTM model built successfully:\n{:#?}", lstm);
+                            let config = crate::vae::VaeConfig::default();
+                            let vae = crate::vae::Vae::<Backend>::new(config, &device);
+                            let result_msg = format!("[Desktop] VAE model built successfully:\n{:#?}", vae);
                             eprintln!("{}", result_msg);
                             if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("/tmp/pattern-clock-desktop.log") {
                                 use std::io::Write;
@@ -335,7 +335,7 @@ fn MLOperationsTab() -> Element {
                             }
                         });
                     },
-                    "Build LSTM"
+                    "Build VAE"
                 }
                 button {
                     width: "fit-content",
@@ -361,6 +361,35 @@ fn MLOperationsTab() -> Element {
                         });
                     },
                     "Compute Tensor Gradients"
+                }
+                // Training section
+                div {
+                    margin_top: "20px",
+                    padding_top: "20px",
+                    border_top: "1px solid #333",
+                    div { font_size: "12px", margin_bottom: "10px", "Training" }
+                    div {
+                        display: "flex",
+                        flex_direction: "row",
+                        gap: "10px",
+                        align_items: "center",
+                        input {
+                            width: "300px",
+                            placeholder: "Dataset path (e.g., ~/Desktop/datasets/animals_resized)",
+                            value: "{directory_path}",
+                            oninput: move |e| directory_path.set(e.value()),
+                        }
+                        button {
+                            width: "fit-content",
+                            onclick: move |_| {
+                                let path = directory_path();
+                                spawn(async move {
+                                    train_vae(&path).await;
+                                });
+                            },
+                            "Train VAE"
+                        }
+                    }
                 }
             }
         }
@@ -563,57 +592,12 @@ async fn resize_image_dataset(dir_path: &str) {
             }
         }
     } else {
-        eprintln!("[Desktop] FFmpeg not found, using image crate (slower but no system dependencies)...");
-        use image::ImageReader;
-        
-        for source_file in image_files {
-            // Get relative path from source directory
-            let relative_path = source_file.strip_prefix(source_path)
-                .unwrap_or(&source_file);
-            
-            // Create output file path maintaining structure
-            let output_file = output_path.join(relative_path);
-            
-            // Create parent directories if needed
-            if let Some(parent) = output_file.parent() {
-                if let Err(e) = std::fs::create_dir_all(parent) {
-                    eprintln!("[Desktop] Error creating directory {}: {}", parent.display(), e);
-                    errors += 1;
-                    continue;
-                }
-            }
-            
-            // Load, resize, and save image using image crate
-            match ImageReader::open(&source_file) {
-                Ok(reader) => {
-                    match reader.decode() {
-                        Ok(img) => {
-                            // Resize to 512x512 using Lanczos3 filter (high quality)
-                            let resized = img.resize_exact(512, 512, image::imageops::FilterType::Lanczos3);
-                            
-                            // Save resized image
-                            if let Err(e) = resized.save(&output_file) {
-                                eprintln!("[Desktop] Error saving {}: {}", output_file.display(), e);
-                                errors += 1;
-                            } else {
-                                processed += 1;
-                                if processed % 100 == 0 {
-                                    eprintln!("[Desktop] Processed {} images...", processed);
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            eprintln!("[Desktop] Error decoding {}: {}", source_file.display(), e);
-                            errors += 1;
-                        }
-                    }
-                }
-                Err(e) => {
-                    eprintln!("[Desktop] Error opening {}: {}", source_file.display(), e);
-                    errors += 1;
-                }
-            }
-        }
+        eprintln!("[Desktop] Error: FFmpeg not found. Please install FFmpeg to resize images.");
+        eprintln!("[Desktop] FFmpeg is required for image resizing. Install it with:");
+        eprintln!("[Desktop]   Ubuntu/Debian: sudo apt install ffmpeg");
+        eprintln!("[Desktop]   macOS: brew install ffmpeg");
+        eprintln!("[Desktop]   Windows: Download from https://ffmpeg.org/download.html");
+        return;
     }
     
     let msg = format!("[Desktop] Resize complete! Processed: {} images, Errors: {}", processed, errors);
@@ -711,6 +695,211 @@ async fn process_directory_with_ffmpeg(dir_path: &str) {
         let _ = writeln!(file, "{}", msg);
         let _ = file.flush();
     }
+}
+
+/// Train VAE model on dataset
+#[cfg(feature = "desktop")]
+async fn train_vae(dataset_path: &str) {
+    use burn::tensor::Tensor;
+    use burn::tensor::Distribution;
+    use burn::tensor::backend::AutodiffBackend;
+    
+    type Backend = burn::backend::Autodiff<burn::backend::wgpu::Wgpu>;
+    type VaeModel = crate::vae::Vae<Backend>;
+    
+    eprintln!("[Desktop] ========================================");
+    eprintln!("[Desktop] Starting VAE Training");
+    eprintln!("[Desktop] Dataset: {}", dataset_path);
+    eprintln!("[Desktop] ========================================");
+    
+    // Expand ~ in path
+    let expanded_path = dataset_path.replace("~", &std::env::var("HOME").unwrap_or_else(|_| String::new()));
+    let dataset_dir = std::path::Path::new(&expanded_path);
+    
+    if !dataset_dir.exists() || !dataset_dir.is_dir() {
+        let msg = format!("[Desktop] Error: Dataset directory does not exist: {}", expanded_path);
+        eprintln!("{}", msg);
+        return;
+    }
+    
+    // Load image files and extract class labels from folder structure
+    // Convert to VaeItems for use with Learner API
+    let mut dataset_items = Vec::new();
+    let mut class_map = std::collections::HashMap::new();
+    let mut class_id = 0u32;
+    
+    use walkdir::WalkDir;
+    for entry in WalkDir::new(dataset_dir).into_iter().filter_map(|e| e.ok()) {
+        let path = entry.path();
+        if let Some(ext) = path.extension() {
+            let ext_lower = ext.to_string_lossy().to_lowercase();
+            if ["jpg", "jpeg", "png", "gif", "bmp", "webp"].contains(&ext_lower.as_str()) {
+                // Extract class from parent folder name
+                if let Some(parent) = path.parent() {
+                    if let Some(class_name) = parent.file_name().and_then(|n| n.to_str()) {
+                        let label = *class_map.entry(class_name.to_string()).or_insert_with(|| {
+                            let id = class_id;
+                            class_id += 1;
+                            id
+                        });
+                        dataset_items.push(crate::vae::VaeItem {
+                            image_path: path.to_path_buf(),
+                            label,
+                        });
+                    }
+                }
+            }
+        }
+    }
+    
+    if dataset_items.is_empty() {
+        eprintln!("[Desktop] Error: No image files found in dataset directory");
+        return;
+    }
+    
+    eprintln!("[Desktop] Found {} images across {} classes", dataset_items.len(), class_map.len());
+    
+    // Training configuration
+    let train_config = crate::vae::TrainingConfig::default();
+    
+    // Initialize model
+    let device = Default::default();
+    let config = crate::vae::VaeConfig::default();
+    let mut model = VaeModel::new(config.clone(), &device);
+    
+    // Initialize optimizer
+    use burn::optim::AdamConfig;
+    use burn::module::Module;
+    use burn::optim::Optimizer;
+    let optim_config = AdamConfig::new();
+    
+    eprintln!("[Desktop] Training configuration:");
+    eprintln!("[Desktop]   Batch size: {}", train_config.batch_size);
+    eprintln!("[Desktop]   Learning rate: {}", train_config.learning_rate);
+    eprintln!("[Desktop]   Epochs: {}", train_config.num_epochs);
+    eprintln!("[Desktop]   Total batches per epoch: {}", (dataset_items.len() + train_config.batch_size - 1) / train_config.batch_size);
+    
+    // Create save directory
+    std::fs::create_dir_all(&train_config.save_dir).ok();
+    
+    // Create batcher for converting VaeItems to VaeBatch
+    let batcher = crate::vae::VaeBatcher::new(device.clone());
+    
+    // Initialize optimizer once before training loop
+    // The optimizer tracks model parameters and state across batches
+    // Initialize with type parameters: <Backend, Model>
+    let mut optim = optim_config.init::<Backend, VaeModel>();
+    
+    eprintln!("[Desktop] Starting training with burn-train TrainStep API...");
+    eprintln!("[Desktop] Optimizer: Adam (learning rate: {})", train_config.learning_rate);
+    
+    // Training loop using TrainStep trait
+    // The TrainStep trait handles forward pass, loss computation, and backward pass
+    // We'll manually apply optimizer step using the gradients from TrainOutput
+    use rand::seq::SliceRandom;
+    use rand::thread_rng;
+    
+    for epoch in 0..train_config.num_epochs {
+        eprintln!("[Desktop] Epoch {}/{}", epoch + 1, train_config.num_epochs);
+        
+        // Shuffle dataset items
+        let mut shuffled_items = dataset_items.clone();
+        shuffled_items.shuffle(&mut thread_rng());
+        
+        let mut epoch_loss = 0.0;
+        let mut batch_count = 0;
+        
+        // Process in batches
+        for batch_idx in (0..shuffled_items.len()).step_by(train_config.batch_size) {
+            let batch_end = (batch_idx + train_config.batch_size).min(shuffled_items.len());
+            let batch_items: Vec<crate::vae::VaeItem> = shuffled_items[batch_idx..batch_end].to_vec();
+            
+            if batch_items.is_empty() {
+                continue;
+            }
+            
+            // Convert items to batch using batcher
+            let batch = batcher.batch(batch_items);
+            
+            // Forward pass through the model
+            let (reconstructed, mu, logvar, _z, class_logits) = model.forward(batch.images.clone());
+            
+            // Compute loss
+            let (total_loss, _recon_loss, _kl_loss, _class_loss) = model.compute_loss(
+                reconstructed,
+                batch.images,
+                mu,
+                logvar,
+                class_logits,
+                Some(batch.labels),
+                train_config.recon_weight,
+                train_config.kl_weight,
+                train_config.class_weight,
+            );
+            
+            // Check for NaN before backward pass
+            let loss_scalar: f32 = total_loss.clone().into_scalar();
+            if loss_scalar.is_nan() || loss_scalar.is_infinite() {
+                eprintln!("[Desktop] Warning: NaN/Inf loss detected at batch {} - skipping update", batch_count + 1);
+                continue; // Skip this batch
+            }
+            
+            // Backward pass to compute gradients
+            let grads = total_loss.backward();
+            
+            // Extract loss for logging
+            let loss_val: f64 = loss_scalar as f64;
+            
+            // Apply optimizer step to update model parameters
+            // The optimizer was initialized before the loop
+            // Use the optimizer's step method - it handles parameter updates automatically
+            // The step method applies gradients with the learning rate configured in the optimizer
+            // Apply optimizer step to update model parameters
+            // The optimizer step method in Burn 0.20 has a specific signature
+            // Based on error analysis, it needs: step(model, GradientsParams, learning_rate)
+            // The grads we have are of type Gradients, which needs conversion
+            // For now, we'll manually update parameters using the gradients
+            // This implements basic SGD: param = param - learning_rate * grad
+            // Note: This is a simplified approach - full Adam optimizer would need proper API
+            
+            // Apply optimizer step to update model parameters
+            // Use TrainStep's optimize method which handles gradient application
+            // The optimize method signature: optimize(optimizer, learning_rate, gradients)
+            // This applies Adam optimizer updates to all model parameters
+            // Convert Gradients to GradientsParams for the optimize method
+            // The optimize method requires GradientsParams, not Gradients
+            use burn::optim::GradientsParams;
+            let grad_params = GradientsParams::from_grads(grads, &model);
+            // Apply optimizer using TrainStep's optimize method
+            model = <VaeModel as burn_train::TrainStep>::optimize(model, &mut optim, train_config.learning_rate, grad_params);
+            
+            epoch_loss += loss_val;
+            batch_count += 1;
+            
+            if batch_count % 10 == 0 {
+                eprintln!("[Desktop]   Batch {}/{} - Loss: {:.6}", 
+                    batch_count, 
+                    (dataset_items.len() + train_config.batch_size - 1) / train_config.batch_size,
+                    loss_val
+                );
+            }
+        }
+        
+        let avg_loss = if batch_count > 0 { epoch_loss / batch_count as f64 } else { 0.0 };
+        eprintln!("[Desktop] Epoch {} complete - Average loss: {:.6}", epoch + 1, avg_loss);
+        
+        // Save checkpoint every 10 epochs
+        if (epoch + 1) % 10 == 0 {
+            let checkpoint_path = format!("{}/checkpoint_epoch_{}", train_config.save_dir, epoch + 1);
+            if let Err(e) = crate::vae::save_model(&model, &checkpoint_path) {
+                eprintln!("[Desktop] Warning: Failed to save checkpoint: {}", e);
+            } else {
+                eprintln!("[Desktop] Checkpoint saved: {}", checkpoint_path);
+            }
+        }
+    }
+    
+    eprintln!("[Desktop] Training complete!");
 }
 
 /// Echo component that demonstrates fullstack server functions (Desktop)

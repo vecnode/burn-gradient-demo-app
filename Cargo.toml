@@ -15,11 +15,13 @@ tower-http = { version = "0.5", features = ["cors"], optional = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 burn = { version = "0.20.1", features = ["autodiff", "wgpu"] }
+burn-train = "0.20.1"
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync"] }
 ffmpeg-next = { version = "6.1", optional = true }
 walkdir = "2"
 rfd = "0.14"
 image = "0.25"
+rand = "0.8"
 
 # WASM dependencies removed - desktop-only app
 

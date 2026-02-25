@@ -6506,10 +6506,12 @@ version = "0.1.0"
 dependencies = [
  "axum 0.7.9",
  "burn",
+ "burn-train",
  "dioxus",
  "ffmpeg-next",
  "image",
  "ractor",
+ "rand 0.8.5",
  "rfd 0.14.1",
  "serde",
  "serde_json",

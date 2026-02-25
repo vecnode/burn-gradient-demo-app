@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 #[cfg(feature = "desktop")]
 use dioxus::desktop::WindowBuilder;
 
@@ -12,7 +14,7 @@ use burn::tensor::Distribution;           // Distribution for random tensor gene
 // Modules
 mod agents;
 #[cfg(feature = "desktop")]
-mod lstm;
+mod vae;
 
 // Platform-specific app modules
 mod app;
