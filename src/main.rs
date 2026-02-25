@@ -38,18 +38,6 @@ fn main() {
             .with_cfg(config)
             .launch(app::desktop::DesktopApp);
     }
-    
-    #[cfg(all(not(feature = "desktop"), feature = "server"))]
-    {
-        // Server-only mode for fullstack - launch WebApp to serve the client
-        dioxus::launch(app::web::WebApp);
-    }
-    
-    #[cfg(all(not(feature = "desktop"), not(feature = "server"), feature = "web"))]
-    {
-        // Web-only mode
-        dioxus::launch(app::web::WebApp);
-    }
 }
 
 
