@@ -7,6 +7,7 @@ Lightweight desktop ML cross-platform application.
 - dioxus
 - ractor
 - burn
+- ffmpeg
 
 API Tests in folder `bruno/`
 
@@ -19,6 +20,7 @@ API Tests in folder `bruno/`
 
 # Desktop app
 dx serve
+dx serve --platform desktop
 # ===============================================
 ```
 

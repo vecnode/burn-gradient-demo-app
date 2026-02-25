@@ -12,8 +12,44 @@ pub use api::*;
 /// System information component displaying CPU, GPU, and stack info
 #[component]
 pub fn SystemInfo() -> Element {
-    let mut system_info = use_resource(move || async move {
-        get_system_info().await.unwrap_or_else(|_| "{}".to_string())
+    // Use use_resource to fetch system info from server
+    let mut retry_key = use_signal(|| 0u8);
+    let mut system_info = use_resource(move || {
+        let key = retry_key();
+        async move {
+            // Retry logic: wait longer and retry up to 3 times
+            let max_retries = 3;
+            let mut last_error = None;
+            
+            for attempt in 0..max_retries {
+                // Increasing delay: 2s, 3s, 4s
+                let delay_ms = 2000 + (attempt * 1000);
+                tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                
+                match get_system_info().await {
+                    Ok(info) => return Ok(info),
+                    Err(e) => {
+                        let error_str = e.to_string();
+                        // If it's a connection error and we have retries left, continue
+                        if error_str.contains("Connection refused") || 
+                           error_str.contains("Backend connection failed") {
+                            if attempt < max_retries - 1 {
+                                last_error = Some(e);
+                                continue; // Retry
+                            }
+                        }
+                        // Otherwise, return the error
+                        return Err(e);
+                    }
+                }
+            }
+            
+            // If we exhausted retries, return the last error or a default error
+            match last_error {
+                Some(e) => Err(e),
+                None => Err(dioxus::prelude::ServerFnError::new("Failed to connect after multiple attempts"))
+            }
+        }
     });
     
     rsx! {
@@ -27,7 +63,7 @@ pub fn SystemInfo() -> Element {
             font_size: "10px",
             {
                 match system_info() {
-                    Some(info_str) => {
+                    Some(Ok(info_str)) => {
                         if let Ok(info) = serde_json::from_str::<serde_json::Value>(&info_str) {
                             let cpu = info.get("cpu").and_then(|v| v.as_str()).unwrap_or("N/A");
                             let gpu = info.get("gpu").and_then(|v| v.as_str()).unwrap_or("N/A");
@@ -36,11 +72,37 @@ pub fn SystemInfo() -> Element {
                                 div { "GPU: {gpu}" }
                             }
                         } else {
-                            rsx! { div { "Loading system info" } }
+                            rsx! { div { "Error parsing system info" } }
+                        }
+                    }
+                    Some(Err(e)) => {
+                        let error_msg = e.to_string();
+                        let is_connection_error = error_msg.contains("Connection refused") || 
+                                                  error_msg.contains("Backend connection failed");
+                        rsx! {
+                            div {
+                                color: "#ff6b6b",
+                                font_size: "10px",
+                                if is_connection_error {
+                                    "Server connection not ready. Retrying automatically..."
+                                } else {
+                                    "Error: {error_msg}"
+                                }
+                            }
+                            button {
+                                font_size: "10px",
+                                padding: "2px 8px",
+                                margin_top: "5px",
+                                onclick: move |_| {
+                                    retry_key.set(retry_key() + 1);
+                                    system_info.restart();
+                                },
+                                "Manual Retry"
+                            }
                         }
                     }
                     None => {
-                        rsx! { div { "Loading system info" } }
+                        rsx! { div { "Loading system info..." } }
                     }
                 }
             }
