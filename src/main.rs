@@ -23,10 +23,7 @@ fn main() {
     // This reduces terminal spam from Dioxus server's automatic logging
     #[cfg(feature = "desktop")]
     {
-        // Set RUST_LOG to filter out the stream endpoint if not already set
         if std::env::var("RUST_LOG").is_err() {
-            // Filter out Dioxus server logs for /api/messages/stream
-            // Keep other logs at INFO level
             std::env::set_var("RUST_LOG", "info");
         }
         
@@ -40,20 +37,15 @@ fn main() {
             .launch(app::desktop::DesktopApp);
     }
     
-    #[cfg(all(not(feature = "desktop"), feature = "web"))]
+    #[cfg(all(not(feature = "desktop"), feature = "server"))]
     {
-        // Web mode or fullstack server with web client
-        // When dx serve runs, it builds server binary with 'web' feature
-        // This launches WebApp which will be served to the browser
+        // Server-only mode for fullstack - launch WebApp to serve the client
         dioxus::launch(app::web::WebApp);
     }
     
-    #[cfg(all(not(feature = "desktop"), not(feature = "web"), feature = "server"))]
+    #[cfg(all(not(feature = "desktop"), not(feature = "server"), feature = "web"))]
     {
-        // Server-only mode - in fullstack, the server should also launch WebApp
-        // to serve the web client. This branch should not normally be hit,
-        // but if it is, we still launch WebApp to serve the client.
-        // The wasm client is built separately and served as static files.
+        // Web-only mode
         dioxus::launch(app::web::WebApp);
     }
 }
@@ -100,7 +92,6 @@ pub fn burn_tensor_example() {
     let y_grad = y.grad(&grads).unwrap();
     // Print the gradient tensor to the console and log file
     let grad_msg = format!("[Desktop] Gradient tensor:\n{y_grad}");
-    println!("{}", grad_msg);
     eprintln!("{}", grad_msg);
     // Also write to log file
     if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("/tmp/pattern-clock-desktop.log") {

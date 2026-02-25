@@ -32,7 +32,6 @@ pub async fn start_desktop_server() -> Result<(), Box<dyn std::error::Error>> {
         .layer(tower_http::cors::CorsLayer::permissive());
     
     let addr = SocketAddr::from(([127, 0, 0, 1], 8081));
-    println!("[Desktop Server] Starting agent HTTP server on http://{}", addr);
     eprintln!("[Desktop Server] Starting agent HTTP server on http://{}", addr);
     
     // Write to log file
@@ -43,7 +42,6 @@ pub async fn start_desktop_server() -> Result<(), Box<dyn std::error::Error>> {
     }
     
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    println!("[Desktop Server] Server bound and ready to accept connections on http://{}", addr);
     eprintln!("[Desktop Server] Server bound and ready to accept connections on http://{}", addr);
     
     // Write to log file
@@ -57,7 +55,6 @@ pub async fn start_desktop_server() -> Result<(), Box<dyn std::error::Error>> {
     // If it returns, log the error
     if let Err(e) = axum::serve(listener, app).await {
         eprintln!("[Desktop Server] Server error: {}", e);
-        println!("[Desktop Server] Server error: {}", e);
         // Write to log file
         if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("/tmp/pattern-clock-desktop.log") {
             use std::io::Write;

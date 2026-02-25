@@ -49,7 +49,7 @@ impl Actor for Agent {
         _myself: ActorRef<Self::Msg>,
         agent_id: Self::Arguments,
     ) -> Result<Self::State, ActorProcessingErr> {
-        println!("[Agent{}] Starting agent with ID {}", agent_id, agent_id);
+        eprintln!("[Agent{}] Starting agent with ID {}", agent_id, agent_id);
         Ok(AgentState {
             id: agent_id,
             processed_count: 0,
@@ -70,18 +70,18 @@ impl Actor for Agent {
                 state.last_data = Some(data.clone());
                 
                 // Print with agent identifier (1, 2, 3, 4, or 5)
-                println!("[Agent{}] Processing data: '{}' | Total processed: {}", 
+                eprintln!("[Agent{}] Processing data: '{}' | Total processed: {}", 
                     state.id, data, state.processed_count);
                 
                 // Simulate async I/O operation
                 tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
             }
             AgentMessage::GetStatus => {
-                println!("[Agent{}] Status - Processed: {} messages, Last data: {:?}", 
+                eprintln!("[Agent{}] Status - Processed: {} messages, Last data: {:?}", 
                     state.id, state.processed_count, state.last_data);
             }
             AgentMessage::CustomAction { action, params } => {
-                println!("[Agent{}] Custom action: '{}' with params: {:?}", 
+                eprintln!("[Agent{}] Custom action: '{}' with params: {:?}", 
                     state.id, action, params);
                 state.processed_count += 1;
             }
@@ -114,7 +114,7 @@ pub async fn initialize_agents() -> Result<(), Box<dyn std::error::Error>> {
     if *initialized {
         return Ok(()); // Already initialized
     }
-    println!("[AgentRegistry] Initializing all 5 agents...");
+    eprintln!("[AgentRegistry] Initializing all 5 agents...");
     
     // Spawn all agents concurrently
     let (actor1_ref, handle1) = Actor::spawn(None, Agent { id: 1 }, 1)
@@ -149,7 +149,7 @@ pub async fn initialize_agents() -> Result<(), Box<dyn std::error::Error>> {
     AGENT_5.set(actor5_ref.clone())
         .map_err(|_| "Failed to store Agent5 reference")?;
     
-    println!("[AgentRegistry] All 5 agents initialized successfully!");
+    eprintln!("[AgentRegistry] All 5 agents initialized successfully!");
     
     // Mark as initialized
     *initialized = true;

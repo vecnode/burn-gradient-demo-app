@@ -3,13 +3,9 @@
 #[cfg(feature = "desktop")]
 use dioxus::prelude::*;
 #[cfg(feature = "desktop")]
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-#[cfg(feature = "desktop")]
-use std::time::Duration;
+use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(feature = "desktop")]
 use burn::backend::{Autodiff, wgpu::Wgpu};
-#[cfg(feature = "desktop")]
-use std::sync::OnceLock;
 
 #[cfg(feature = "desktop")]
 use crate::shared::{SystemInfo, echo_server};
@@ -18,27 +14,9 @@ use crate::agents::ensure_agents_initialized;
 #[cfg(feature = "desktop")]
 use crate::app::desktop_server;
 
-// Reusable HTTP client for all desktop-to-web communication
-// Reduces connection overhead and improves reliability
-#[cfg(feature = "desktop")]
-static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
-
-#[cfg(feature = "desktop")]
-fn get_http_client() -> &'static reqwest::Client {
-    HTTP_CLIENT.get_or_init(|| {
-        reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(5))
-            .build()
-            .expect("Failed to create HTTP client")
-    })
-}
-
 // Global cognitive cycle state
 #[cfg(feature = "desktop")]
 static COGNITIVE_CYCLE_STATE: AtomicBool = AtomicBool::new(false);
-// Global cognitive cycle counter
-#[cfg(feature = "desktop")]
-static COGNITIVE_CYCLE_COUNTER: AtomicU64 = AtomicU64::new(0);
 // Guard to prevent duplicate initialization
 #[cfg(feature = "desktop")]
 static INITIALIZATION_STARTED: AtomicBool = AtomicBool::new(false);
@@ -71,7 +49,6 @@ pub fn DesktopApp() -> Element {
             if let Err(e) = ensure_agents_initialized().await {
                 eprintln!("[Desktop] Failed to initialize agents: {}", e);
             } else {
-                println!("[Desktop] Agents initialized successfully");
                 eprintln!("[Desktop] Agents initialized successfully");
             }
             
@@ -81,21 +58,8 @@ pub fn DesktopApp() -> Element {
                 tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
                 if let Err(e) = desktop_server::start_desktop_server().await {
                     eprintln!("[Desktop Server] Error: {}", e);
-                    println!("[Desktop Server] Error: {}", e);
                 }
             });
-        });
-    });
-    
-    use_effect(move || {
-        spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_millis(50));
-            loop {
-                interval.tick().await;
-                if COGNITIVE_CYCLE_STATE.load(Ordering::SeqCst) {
-                    COGNITIVE_CYCLE_COUNTER.fetch_add(1, Ordering::Relaxed);
-                }
-            }
         });
     });
     
@@ -116,7 +80,6 @@ pub fn DesktopApp() -> Element {
                     cycle_state.set(new_state);
                     let msg = format!("[Desktop] Cognitive Cycle {}: cognitive_cycle_state={}", 
                         if new_state { "STARTED" } else { "STOPPED" }, new_state);
-                    println!("{}", msg);
                     eprintln!("{}", msg);
                     if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("/tmp/pattern-clock-desktop.log") {
                         use std::io::Write;
@@ -141,7 +104,6 @@ pub fn DesktopApp() -> Element {
                 onclick: move |_| {
                     // Write to log file that serve-all.sh monitors (most reliable)
                     let msg = "[Desktop] ========================================\n[Desktop] Building LSTM model\n[Desktop] ========================================";
-                    println!("{}", msg);
                     eprintln!("{}", msg);
                     if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("/tmp/pattern-clock-desktop.log") {
                         use std::io::Write;
@@ -155,7 +117,6 @@ pub fn DesktopApp() -> Element {
                     let config = crate::lstm::LstmConfig::default();
                     let lstm = crate::lstm::Lstm::<Backend>::new(config, &device);
                         let result_msg = format!("[Desktop] LSTM model built successfully:\n{:#?}", lstm);
-                        println!("{}", result_msg);
                         eprintln!("{}", result_msg);
                         if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("/tmp/pattern-clock-desktop.log") {
                             use std::io::Write;
@@ -170,7 +131,6 @@ pub fn DesktopApp() -> Element {
                 onclick: move |_| {
                     // Write to log file that serve-all.sh monitors (most reliable)
                     let msg = "[Desktop] ========================================\n[Desktop] Computing tensor gradients\n[Desktop] ========================================";
-                    println!("{}", msg);
                     eprintln!("{}", msg);
                     if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("/tmp/pattern-clock-desktop.log") {
                         use std::io::Write;
@@ -181,7 +141,6 @@ pub fn DesktopApp() -> Element {
                     spawn(async move {
                         crate::burn_tensor_example();
                         let result_msg = "[Desktop] Tensor gradients computed successfully";
-                        println!("{}", result_msg);
                         eprintln!("{}", result_msg);
                         if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("/tmp/pattern-clock-desktop.log") {
                             use std::io::Write;
@@ -194,16 +153,6 @@ pub fn DesktopApp() -> Element {
             }
         }
         DesktopEcho {}
-        br {}
-        div {
-            id: "app-header",
-            width: "40%",
-            p {
-                font_size: "12px",
-                "HTTP Communication Test - Send to Web Browser"
-            }
-            TestButton {}
-        }
         br {}
         div {
             id: "web-interface-container",
@@ -223,54 +172,6 @@ pub fn DesktopApp() -> Element {
                 height: "550px",
                 border: "none",
                 style: "border-radius: 0 0 5px 5px;",
-            }
-        }
-    }
-}
-
-#[cfg(feature = "desktop")]
-#[component]
-fn TestButton() -> Element {
-    let mut status_msg = use_signal(|| String::new());
-    
-    rsx! {
-        button {
-            onclick: move |_| {
-                let mut status = status_msg;
-                
-                spawn(async move {
-                    let test_msg = "Hello from desktop app - Test message!";
-                    
-                    // Use shared HTTP client for efficient connection reuse
-                    let client = get_http_client();
-                    let json_body = serde_json::json!({"message": test_msg});
-                    
-                    match client.post("http://localhost:8080/api/messages/send")
-                        .header("Content-Type", "application/json")
-                        .json(&json_body)
-                        .send()
-                        .await {
-                        Ok(resp) => {
-                            let http_status = resp.status();
-                            if http_status.is_success() {
-                                status.set("✓ Sent!".to_string());
-                            } else {
-                                let error_msg = resp.text().await.unwrap_or_else(|_| format!("{}", http_status));
-                                status.set(format!("✗ Error: {} - {}", http_status, error_msg));
-                            }
-                        }
-                        Err(e) => {
-                            status.set(format!("✗ Failed: {}", e));
-                        }
-                    }
-                });
-            },
-            "Send Test Message to Browser"
-        }
-        if !status_msg().is_empty() {
-            p {
-                color: if status_msg().starts_with("✓") { "#4caf50" } else { "#f44336" },
-                "{status_msg}"
             }
         }
     }
