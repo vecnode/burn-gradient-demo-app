@@ -548,7 +548,7 @@ async fn load_image_files(dir_path: &str) -> Vec<String> {
         .collect()
 }
 
-/// Resize image dataset - creates a new folder with resized images (512x512)
+/// Resize image dataset - creates a new folder with resized images (256x256)
 /// Maintains the same folder structure as the original dataset
 /// Uses FFmpeg for fast batch processing (if available) or falls back to image crate
 #[cfg(feature = "desktop")]
@@ -633,7 +633,7 @@ async fn resize_image_dataset(dir_path: &str) {
             }
             
             // Use FFmpeg to resize image
-            if let Err(e) = resize_image_ffmpeg(&source_file, &output_file, 512, 512).await {
+            if let Err(e) = resize_image_ffmpeg(&source_file, &output_file, 256, 256).await {
                 eprintln!("[Desktop] Error processing {}: {}", source_file.display(), e);
                 errors += 1;
             } else {
@@ -875,6 +875,22 @@ async fn train_vae(dataset_path: &str) {
             
             // Forward pass through the model
             let (reconstructed, mu, logvar, _z, class_logits) = model.forward(batch.images.clone());
+            
+            // Log mu and logvar statistics periodically to diagnose latent space usage
+            // Do this BEFORE compute_loss since it moves mu and logvar
+            if batch_count % 100 == 0 && batch_count > 0 {
+                // Compute mean values (simplified - just show means for now)
+                let mu_mean: f64 = mu.clone().mean().into_scalar() as f64;
+                let mu_sq_mean: f64 = (mu.clone() * mu.clone()).mean().into_scalar() as f64;
+                let mu_std = (mu_sq_mean - mu_mean * mu_mean).max(0.0).sqrt();
+                
+                let logvar_mean: f64 = logvar.clone().mean().into_scalar() as f64;
+                let logvar_sq_mean: f64 = (logvar.clone() * logvar.clone()).mean().into_scalar() as f64;
+                let logvar_std = (logvar_sq_mean - logvar_mean * logvar_mean).max(0.0).sqrt();
+                
+                eprintln!("[Desktop]   Latent stats - mu: mean={:.4}, std={:.4} | logvar: mean={:.4}, std={:.4}", 
+                    mu_mean, mu_std, logvar_mean, logvar_std);
+            }
             
             // Compute loss
             let (total_loss, recon_loss, kl_loss, class_loss) = model.compute_loss(

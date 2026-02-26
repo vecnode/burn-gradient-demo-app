@@ -9,7 +9,7 @@ use burn::tensor::backend::AutodiffBackend;
 /// Configuration for VAE model
 #[derive(Debug, Clone)]
 pub struct VaeConfig {
-    /// Input image size (assumed square: 512x512)
+    /// Input image size (assumed square: 256x256)
     pub image_size: usize,
     /// Number of input channels (RGB = 3)
     pub in_channels: usize,
@@ -26,12 +26,12 @@ pub struct VaeConfig {
 impl Default for VaeConfig {
     fn default() -> Self {
         Self {
-            image_size: 512,
+            image_size: 256,
             in_channels: 3,
             latent_dim: 256,
             num_classes: 90,
             base_channels: 32,  // Reduced from 64 to 32 to reduce memory usage
-            num_blocks: 4,  // Reduced from 5 to 4 to get closer to 512x512 output
+            num_blocks: 4,  // With 4 blocks: 256/16 = 16, then upsampled to ~256
         }
     }
 }
@@ -187,10 +187,9 @@ impl<B: Backend> VaeDecoder<B> {
     /// Create a new VAE decoder
     pub fn new(config: &VaeConfig, device: &B::Device) -> Self {
         // Calculate initial size after encoder (image_size / 2^num_blocks)
-        // With 4 blocks: 512/16 = 32
+        // With 4 blocks: 256/16 = 16
         // ConvTranspose2d with stride=2, padding=1, kernel=3: output = (input-1)*2 + 1
-        // 32 -> 63 -> 125 -> 249 -> 497 (close to 512)
-        // But we're getting 1009x1009, which suggests the initial_size calculation is wrong
+        // 16 -> 31 -> 61 -> 121 -> 241 (close to 256)
         let initial_size = config.image_size / (1 << config.num_blocks);
         let mut initial_channels = config.base_channels * (1 << (config.num_blocks - 1));
         initial_channels = initial_channels.min(256); // Reduced from 512 to 256 to save memory
@@ -275,12 +274,12 @@ impl<B: Backend> VaeDecoder<B> {
         // Final output layer with sigmoid to [0, 1] range
         let mut output = self.output_conv.forward(x);
         
-        // Resize to exact target size (512x512) to handle ConvTranspose2d size mismatch
+        // Resize to exact target size (256x256) to handle ConvTranspose2d size mismatch
         // ConvTranspose2d with stride=2, padding=1, kernel=3 produces size = 2*input - 1
-        // After 5 blocks: 16 -> 31 -> 61 -> 121 -> 241 -> 481 (not 512)
+        // After 4 blocks: 16 -> 31 -> 61 -> 121 -> 241 (not 256)
         let device = output.device();
         let [batch, channels, h, w] = output.dims();
-        let target_size = 512;
+        let target_size = 256;
         
         if h != target_size || w != target_size {
             // Use interpolation to resize to exact target size
@@ -401,13 +400,13 @@ impl<B: Backend> Vae<B> {
         let device = original.device();
         
         // Reconstruction loss: MSE between original and reconstructed
-        // Handle size mismatch: decoder outputs 481x481, original is 512x512
+        // Handle size mismatch: decoder outputs ~241x241, original is 256x256
         // For now, we'll compute loss on the overlapping region or resize
         let [batch, channels, orig_h, orig_w] = original.dims();
         let [_, _, recon_h, recon_w] = reconstructed.dims();
         
-        // Handle size mismatch: decoder outputs 481x481, original is 512x512
-        // Solution: crop original to match reconstructed size for loss computation
+        // Handle size mismatch: decoder outputs ~241x241, original is 256x256
+        // Solution: resize original to match reconstructed size for loss computation
         let diff = if recon_h == orig_h && recon_w == orig_w {
             reconstructed - original.clone()
         } else {
@@ -432,33 +431,15 @@ impl<B: Backend> Vae<B> {
             // Instead, we'll crop the original by computing indices manually
             // For simplicity, we'll use the reconstructed size and compute loss properly
             
-            // Handle size mismatch: decoder outputs 497x497, original is 512x512
-            // The mismatch is small (15 pixels = 3% difference)
-            // We can't use integer pooling to downsample 512->497 (requires 1.03x scale)
-            // Solution: Upsample reconstructed from 497x497 to 512x512 using transposed conv
+            // Handle size mismatch: decoder outputs ~241x241, original is 256x256
+            // The mismatch is small (15 pixels = ~6% difference)
+            // Solution: Use adaptive average pooling on original to match reconstructed size
             // This ensures sizes match for proper loss computation
-            
-            // Use a single transposed conv to upsample 497 -> 512
-            // Scale factor: 512/497 ≈ 1.03, so we need a small upsampling
-            // Use stride=1 transposed conv with appropriate padding to get from 497 to 512
-            use burn::nn::conv::ConvTranspose2dConfig;
-            let [batch, channels, _, _] = reconstructed.dims();
-            
-            // Create a transposed conv layer to upsample: 497 -> 512
-            // Use kernel=3, stride=1, padding to get +15 pixels
-            // Output size = (input - 1) * stride + kernel - 2*padding
-            // For 497 -> 512: 512 = (497 - 1) * 1 + 3 - 2*padding
-            // 512 = 496 + 3 - 2*padding => padding = (496 + 3 - 512) / 2 = -6.5 (negative!)
-            // This won't work with standard padding
-            
-            // Alternative: Use adaptive average pooling on original to get 497x497
-            // Or use nearest-neighbor upsampling by repeating pixels
-            // Simplest: Use adaptive pooling on original to match reconstructed size
             use burn::nn::pool::AdaptiveAvgPool2dConfig;
             let adaptive_pool = AdaptiveAvgPool2dConfig::new([recon_h, recon_w]).init();
             let resized_original = adaptive_pool.forward(original.clone());
             
-            // Now sizes match: both are recon_h x recon_w (497x497)
+            // Now sizes match: both are recon_h x recon_w (~241x241)
             reconstructed - resized_original
         };
         
@@ -468,16 +449,16 @@ impl<B: Backend> Vae<B> {
         
         // KL divergence: D_KL(N(mu, sigma^2) || N(0, 1))
         // KL = 0.5 * sum(mu^2 + sigma^2 - 1 - log(sigma^2))
-        // Add numerical stability: clamp logvar more aggressively to prevent NaN
-        // Clamp to [-5, 5] to prevent exp(logvar) from becoming too large
-        let logvar_clamped = logvar.clamp(-5.0, 5.0); // More aggressive clamping
+        // Add numerical stability: clamp logvar to prevent extreme values
+        // Clamp to [-10, 10] - less aggressive to allow model to learn proper variance
+        let logvar_clamped = logvar.clamp(-10.0, 10.0);
         let mu_sq = mu.clone() * mu.clone();
         let sigma_sq = logvar_clamped.clone().exp();
         let one = Tensor::ones(mu.dims(), &device);
         let kl = mu_sq + sigma_sq - one - logvar_clamped.clone();
-        // mean() returns scalar (0D), multiply by 0.5 and clamp aggressively
-        // Clamp to smaller range to prevent NaN propagation
-        let kl_loss_scalar = (kl.mean() * 0.5).clamp(-10.0, 10.0);
+        // mean() returns scalar (0D), multiply by 0.5
+        // Don't clamp too aggressively - allow KL to grow naturally as model learns
+        let kl_loss_scalar = kl.mean() * 0.5;
         
         // Classification loss (if labels provided)
         // Temporarily disabled due to unsqueeze dimension issues in Burn 0.20
@@ -565,18 +546,18 @@ impl<B: Backend> VaeBatcher<B> {
         use image::GenericImageView;
         
         let batch_size = items.len();
-        let mut flat_data = Vec::with_capacity(batch_size * 3 * 512 * 512);
+        let mut flat_data = Vec::with_capacity(batch_size * 3 * 256 * 256);
         let mut labels = Vec::with_capacity(batch_size);
         
         for item in items {
             // Load and resize image
             if let Ok(img) = image::open(&item.image_path) {
-                let resized = img.resize_exact(512, 512, image::imageops::FilterType::Lanczos3);
+                let resized = img.resize_exact(256, 256, image::imageops::FilterType::Lanczos3);
                 let rgb = resized.to_rgb8();
                 
-                // Extract pixels in CHW format: [C, H, W] = [3, 512, 512]
-                for y in 0..512 {
-                    for x in 0..512 {
+                // Extract pixels in CHW format: [C, H, W] = [3, 256, 256]
+                for y in 0..256 {
+                    for x in 0..256 {
                         let pixel = rgb.get_pixel(x, y);
                         flat_data.push(pixel[0] as f32 / 255.0); // R
                         flat_data.push(pixel[1] as f32 / 255.0); // G
@@ -588,7 +569,7 @@ impl<B: Backend> VaeBatcher<B> {
         }
         
         // Convert to tensors
-        let shape = [batch_size, 3, 512, 512];
+        let shape = [batch_size, 3, 256, 256];
         let img_tensor = Tensor::<B, 1>::from_floats(flat_data.as_slice(), &self.device)
             .reshape(shape);
         let labels_tensor = Tensor::<B, 1>::from_floats(labels.as_slice(), &self.device);
@@ -653,11 +634,11 @@ pub struct TrainingConfig {
 impl Default for TrainingConfig {
     fn default() -> Self {
         Self {
-            batch_size: 6,  // Testing memory capacity - increased from 4 to 6
-            learning_rate: 1e-3,  // Increased from 1e-4 to 1e-3 for faster learning
-            num_epochs: 50,
+            batch_size: 32,  // Increased from 6 to 16 - images are now 256x256 (4x smaller), so we can fit more in memory
+            learning_rate: 5e-4,  // Reduced from 1e-3 to 5e-4 for more stable training
+            num_epochs: 20,
             recon_weight: 1.0,
-            kl_weight: 0.0001,
+            kl_weight: 0.0001,  // Keep at 0.0001 - this is reasonable for VAE training
             class_weight: 0.1,  // Reduced from 1.0 since classification loss computation is approximate
             save_dir: "./models".to_string(),
         }
