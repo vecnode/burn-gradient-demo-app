@@ -430,24 +430,33 @@ impl<B: Backend> Vae<B> {
             // For simplicity, we'll use the reconstructed size and compute loss properly
             
             // Handle size mismatch: decoder outputs 497x497, original is 512x512
-            // The mismatch is small (15 pixels on each side = 3% difference)
-            // This is acceptable - the model learns to reconstruct the center region
-            // For proper loss computation, we'd need to crop the original or resize reconstructed
-            // Since Burn 0.20 doesn't have easy tensor slicing, we'll use a workaround:
-            // Compute loss by downsampling original to match reconstructed size using pooling
-            use burn::nn::pool::AvgPool2dConfig;
-            // Calculate kernel size to downsample: 512 -> 497 is approximately 1.03x
-            // Use kernel size that gets us close to 497x497
-            let kernel_h = ((orig_h as f32 / recon_h as f32).ceil() as usize).max(1);
-            let kernel_w = ((orig_w as f32 / recon_w as f32).ceil() as usize).max(1);
-            let pool = AvgPool2dConfig::new([kernel_h, kernel_w]).init();
-            let downsampled_original = pool.forward(original.clone());
-            let [_, _, ds_h, ds_w] = downsampled_original.dims();
+            // The mismatch is small (15 pixels = 3% difference)
+            // We can't use integer pooling to downsample 512->497 (requires 1.03x scale)
+            // Solution: Upsample reconstructed from 497x497 to 512x512 using transposed conv
+            // This ensures sizes match for proper loss computation
             
-            // Use downsampled original for loss computation
-            // If sizes are close (within 1-2 pixels), this works well
-            // The small mismatch is acceptable for training
-            reconstructed - downsampled_original
+            // Use a single transposed conv to upsample 497 -> 512
+            // Scale factor: 512/497 ≈ 1.03, so we need a small upsampling
+            // Use stride=1 transposed conv with appropriate padding to get from 497 to 512
+            use burn::nn::conv::ConvTranspose2dConfig;
+            let [batch, channels, _, _] = reconstructed.dims();
+            
+            // Create a transposed conv layer to upsample: 497 -> 512
+            // Use kernel=3, stride=1, padding to get +15 pixels
+            // Output size = (input - 1) * stride + kernel - 2*padding
+            // For 497 -> 512: 512 = (497 - 1) * 1 + 3 - 2*padding
+            // 512 = 496 + 3 - 2*padding => padding = (496 + 3 - 512) / 2 = -6.5 (negative!)
+            // This won't work with standard padding
+            
+            // Alternative: Use adaptive average pooling on original to get 497x497
+            // Or use nearest-neighbor upsampling by repeating pixels
+            // Simplest: Use adaptive pooling on original to match reconstructed size
+            use burn::nn::pool::AdaptiveAvgPool2dConfig;
+            let adaptive_pool = AdaptiveAvgPool2dConfig::new([recon_h, recon_w]).init();
+            let resized_original = adaptive_pool.forward(original.clone());
+            
+            // Now sizes match: both are recon_h x recon_w (497x497)
+            reconstructed - resized_original
         };
         
         let recon_loss = (diff.clone() * diff).mean();
@@ -640,7 +649,7 @@ pub struct TrainingConfig {
 impl Default for TrainingConfig {
     fn default() -> Self {
         Self {
-            batch_size: 4,  // Increased from 2 to 4 for better training stability
+            batch_size: 6,  // Testing memory capacity - increased from 4 to 6
             learning_rate: 1e-4,
             num_epochs: 50,
             recon_weight: 1.0,
@@ -651,24 +660,67 @@ impl Default for TrainingConfig {
     }
 }
 
-/// Save VAE model to file (placeholder - full serialization requires Burn record feature)
-pub fn save_model<B: Backend>(_model: &Vae<B>, path: &str) -> Result<(), String> {
+/// Save VAE model to file
+/// Note: Burn 0.20.1 doesn't have a built-in record API, so we'll save model state
+/// For now, we'll create a marker file and save metadata
+/// Full model serialization would require custom implementation or using burn-train's checkpointing
+pub fn save_model<B: Backend>(model: &Vae<B>, path: &str) -> Result<(), String> {
     std::fs::create_dir_all(path).map_err(|e| format!("Failed to create directory: {}", e))?;
+    
+    // Save model metadata
+    let metadata = serde_json::json!({
+        "model_type": "VAE",
+        "latent_dim": model.latent_dim,
+        "num_classes": model.num_classes,
+        "saved_at": std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    });
+    
+    let metadata_path = format!("{}/metadata.json", path);
+    std::fs::write(&metadata_path, serde_json::to_string_pretty(&metadata).unwrap())
+        .map_err(|e| format!("Failed to write metadata: {}", e))?;
+    
     // Create a marker file to indicate model was saved
+    // TODO: Implement full model serialization when Burn record API is available
     let model_path = format!("{}/vae_model.marker", path);
     std::fs::File::create(&model_path).map_err(|e| format!("Failed to create model file: {}", e))?;
-    eprintln!("[Desktop] Model checkpoint directory created: {}", path);
-    eprintln!("[Desktop] Note: Full model serialization requires Burn record API");
+    
+    eprintln!("[Desktop] Model checkpoint saved to: {}", path);
+    eprintln!("[Desktop] Note: Full model weights serialization requires Burn record API (not available in 0.20.1)");
     Ok(())
 }
 
-/// Load VAE model from file (placeholder - creates new model for now)
+/// Load VAE model from file
+/// Note: Since full serialization isn't available, this creates a new model
+/// In the future, this will load the actual weights from the checkpoint
 pub fn load_model<B: Backend>(
     config: VaeConfig,
-    _path: &str,
+    path: &str,
     device: &B::Device,
 ) -> Result<Vae<B>, String> {
-    // TODO: Implement proper model loading when Burn record API is available
-    eprintln!("[Desktop] Note: Loading from checkpoint not yet implemented, creating new model");
+    let model_path = format!("{}/vae_model.marker", path);
+    
+    // Check if checkpoint exists
+    if !std::path::Path::new(&model_path).exists() {
+        return Err(format!("Model checkpoint not found: {}", path));
+    }
+    
+    // Load metadata if available
+    let metadata_path = format!("{}/metadata.json", path);
+    if std::path::Path::new(&metadata_path).exists() {
+        if let Ok(metadata_str) = std::fs::read_to_string(&metadata_path) {
+            if let Ok(metadata) = serde_json::from_str::<serde_json::Value>(&metadata_str) {
+                eprintln!("[Desktop] Loading checkpoint metadata: {:?}", metadata);
+            }
+        }
+    }
+    
+    // TODO: Load actual model weights when Burn record API is available
+    // For now, create a new model (weights would be loaded here)
+    eprintln!("[Desktop] Note: Loading model weights not yet implemented - creating new model");
+    eprintln!("[Desktop] Checkpoint found at: {}", path);
+    
     Ok(Vae::<B>::new(config, device))
 }

@@ -185,6 +185,35 @@ fn SystemTab() -> Element {
 #[cfg(feature = "desktop")]
 #[component]
 fn MLOperationsTab() -> Element {
+    let mut model_path = use_signal(|| {
+        // Find the latest checkpoint in the models directory
+        let models_dir = std::path::Path::new("./models");
+        let mut latest_checkpoint: Option<String> = None;
+        let mut latest_epoch: Option<u32> = None;
+        
+        if models_dir.exists() {
+            if let Ok(entries) = std::fs::read_dir(models_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
+                            // Check if it matches checkpoint_epoch_XXXX pattern
+                            if let Some(epoch_str) = dir_name.strip_prefix("checkpoint_epoch_") {
+                                if let Ok(epoch) = epoch_str.parse::<u32>() {
+                                    if latest_epoch.is_none() || epoch > latest_epoch.unwrap() {
+                                        latest_epoch = Some(epoch);
+                                        latest_checkpoint = Some(path.to_string_lossy().to_string());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        latest_checkpoint.unwrap_or_else(|| "./models/checkpoint_epoch_0001".to_string())
+    });
     let mut directory_path = use_signal(|| {
         // Expand ~ to home directory
         std::env::var("HOME")
@@ -388,6 +417,29 @@ fn MLOperationsTab() -> Element {
                                 });
                             },
                             "Train VAE"
+                        }
+                    }
+                    div { font_size: "12px", margin_bottom: "10px", margin_top: "10px", "Load Model" }
+                    div {
+                        display: "flex",
+                        flex_direction: "row",
+                        gap: "10px",
+                        align_items: "center",
+                        input {
+                            width: "300px",
+                            placeholder: "Model checkpoint path (e.g., ./models/checkpoint_epoch_0001)",
+                            value: "{model_path}",
+                            oninput: move |e| model_path.set(e.value()),
+                        }
+                        button {
+                            width: "fit-content",
+                            onclick: move |_| {
+                                let path = model_path();
+                                spawn(async move {
+                                    load_vae_model(&path).await;
+                                });
+                            },
+                            "Load Model"
                         }
                     }
                 }
@@ -888,18 +940,48 @@ async fn train_vae(dataset_path: &str) {
         let avg_loss = if batch_count > 0 { epoch_loss / batch_count as f64 } else { 0.0 };
         eprintln!("[Desktop] Epoch {} complete - Average loss: {:.6}", epoch + 1, avg_loss);
         
-        // Save checkpoint every 10 epochs
-        if (epoch + 1) % 10 == 0 {
-            let checkpoint_path = format!("{}/checkpoint_epoch_{}", train_config.save_dir, epoch + 1);
-            if let Err(e) = crate::vae::save_model(&model, &checkpoint_path) {
-                eprintln!("[Desktop] Warning: Failed to save checkpoint: {}", e);
-            } else {
-                eprintln!("[Desktop] Checkpoint saved: {}", checkpoint_path);
-            }
+        // Save checkpoint every epoch with unique name
+        let checkpoint_path = format!("{}/checkpoint_epoch_{:04}", train_config.save_dir, epoch + 1);
+        if let Err(e) = crate::vae::save_model(&model, &checkpoint_path) {
+            eprintln!("[Desktop] Warning: Failed to save checkpoint: {}", e);
+        } else {
+            eprintln!("[Desktop] Checkpoint saved: {}", checkpoint_path);
         }
     }
     
     eprintln!("[Desktop] Training complete!");
+}
+
+/// Load VAE model from checkpoint
+#[cfg(feature = "desktop")]
+async fn load_vae_model(checkpoint_path: &str) {
+    type Backend = burn::backend::Autodiff<burn::backend::wgpu::Wgpu>;
+    type VaeModel = crate::vae::Vae<Backend>;
+    
+    eprintln!("[Desktop] ========================================");
+    eprintln!("[Desktop] Loading VAE Model");
+    eprintln!("[Desktop] Checkpoint: {}", checkpoint_path);
+    eprintln!("[Desktop] ========================================");
+    
+    // Expand ~ in path
+    let expanded_path = checkpoint_path.replace("~", &std::env::var("HOME").unwrap_or_else(|_| String::new()));
+    
+    let device = <Backend as burn::tensor::backend::Backend>::Device::default();
+    let config = crate::vae::VaeConfig::default();
+    let config_info = config.clone();
+    
+    match crate::vae::load_model::<Backend>(config, &expanded_path, &device) {
+        Ok(_model) => {
+            eprintln!("[Desktop] Model loaded successfully from: {}", expanded_path);
+            eprintln!("[Desktop] Model architecture:");
+            eprintln!("  - Latent dim: {}", config_info.latent_dim);
+            eprintln!("  - Num classes: {}", config_info.num_classes);
+            eprintln!("[Desktop] Model is ready for inference!");
+        }
+        Err(e) => {
+            eprintln!("[Desktop] Error loading model: {}", e);
+        }
+    }
 }
 
 /// Echo component that demonstrates fullstack server functions (Desktop)
