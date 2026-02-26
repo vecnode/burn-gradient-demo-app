@@ -23,5 +23,3 @@ dx serve
 dx serve --platform desktop
 # ===============================================
 ```
-
-Both will use the same server backend for API endpoints. The web interface will be available at http://127.0.0.1:8080, and the desktop app will open in a separate window.

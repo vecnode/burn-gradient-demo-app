@@ -877,7 +877,7 @@ async fn train_vae(dataset_path: &str) {
             let (reconstructed, mu, logvar, _z, class_logits) = model.forward(batch.images.clone());
             
             // Compute loss
-            let (total_loss, _recon_loss, _kl_loss, _class_loss) = model.compute_loss(
+            let (total_loss, recon_loss, kl_loss, class_loss) = model.compute_loss(
                 reconstructed,
                 batch.images,
                 mu,
@@ -889,11 +889,19 @@ async fn train_vae(dataset_path: &str) {
                 train_config.class_weight,
             );
             
+            // Extract individual loss components for debugging (before NaN check)
+            let recon_val: f64 = recon_loss.clone().into_scalar() as f64;
+            let kl_val: f64 = kl_loss.clone().into_scalar() as f64;
+            let class_val: f64 = class_loss.as_ref().map(|l| l.clone().into_scalar() as f64).unwrap_or(0.0);
+            
             // Check for NaN before backward pass
             let loss_scalar: f32 = total_loss.clone().into_scalar();
             if loss_scalar.is_nan() || loss_scalar.is_infinite() {
-                eprintln!("[Desktop] Warning: NaN/Inf loss detected at batch {} - skipping update", batch_count + 1);
-                continue; // Skip this batch
+                eprintln!("[Desktop] Warning: NaN/Inf loss detected at batch {} - stopping training to prevent infinite loop", batch_count + 1);
+                eprintln!("[Desktop] Last valid loss: {:.6} (Recon: {:.4}, KL: {:.4})", 
+                    loss_scalar as f64, recon_val, kl_val);
+                eprintln!("[Desktop] Training stopped due to numerical instability");
+                break; // Break out of batch loop, not just continue
             }
             
             // Backward pass to compute gradients
@@ -929,10 +937,13 @@ async fn train_vae(dataset_path: &str) {
             batch_count += 1;
             
             if batch_count % 10 == 0 {
-                eprintln!("[Desktop]   Batch {}/{} - Loss: {:.6}", 
+                eprintln!("[Desktop]   Batch {}/{} - Loss: {:.6} (Recon: {:.4}, KL: {:.4}, Class: {:.4})", 
                     batch_count, 
                     (dataset_items.len() + train_config.batch_size - 1) / train_config.batch_size,
-                    loss_val
+                    loss_val,
+                    recon_val,
+                    kl_val,
+                    class_val
                 );
             }
         }
