@@ -3,38 +3,29 @@
 #[cfg(feature = "desktop")]
 use dioxus::desktop::WindowBuilder;
 
-// Import Burn neural net building blocks and traits (desktop only)
 #[cfg(feature = "desktop")]
-use burn::tensor::Tensor;                 // Core tensor (multi-dimensional array) type
+use burn::tensor::Tensor;
 #[cfg(feature = "desktop")]
-use burn::backend::{Autodiff, wgpu::Wgpu}; // Backend types: Autodiff wrapper and WGPU backend
+use burn::backend::{Autodiff, wgpu::Wgpu};
 #[cfg(feature = "desktop")]
-use burn::tensor::Distribution;           // Distribution for random tensor generation
+use burn::tensor::Distribution;
 
-// Modules
-mod agents;
-#[cfg(feature = "desktop")]
-mod vae;
+mod actors;
 
-// Platform-specific app modules
 mod app;
-mod shared;
 
 fn main() {
-    // Configure tracing to filter out /api/messages/stream logs
-    // This reduces terminal spam from Dioxus server's automatic logging
     #[cfg(feature = "desktop")]
     {
         if std::env::var("RUST_LOG").is_err() {
             std::env::set_var("RUST_LOG", "info");
         }
         
-        // Window configuration for desktop - HD size (1200x800)
         use dioxus::desktop::trayicon::dpi::LogicalSize;
         let window_builder = WindowBuilder::new()
-            .with_title("pattern-clock - Desktop")
+            .with_title("burn-gradient-demo-app - Desktop")
             .with_always_on_top(false)
-            .with_inner_size(LogicalSize::new(1200.0, 800.0));
+            .with_inner_size(LogicalSize::new(700.0, 400.0));
         let config = dioxus::desktop::Config::default().with_window(window_builder);
         dioxus::LaunchBuilder::new()
             .with_cfg(config)
@@ -43,50 +34,24 @@ fn main() {
 }
 
 
-// ============================================================================
-// Burn Tensor Example
-// ============================================================================
-
-/// Example function demonstrating Burn tensor operations with automatic differentiation
-/// 
-/// This function demonstrates the core concepts of automatic differentiation (autodiff) in Burn:
-/// 1. Creates two random 32x32 tensors (x and y)
-/// 2. Marks tensor y to track gradients (require_grad)
-/// 3. Performs a series of operations: addition, matrix multiplication, and exponential
-/// 4. Computes gradients by calling backward() on the final result
-/// 5. Extracts and prints the gradient of y with respect to the final output
-/// 
-/// The computation graph: tmp = exp((x + y) @ x), where @ is matrix multiplication
-/// The gradient shows how much the output changes when y changes, which is essential for training neural networks.
 #[cfg(feature = "desktop")]
 pub fn burn_tensor_example() {
-    // Define the backend type: Autodiff wrapper around WGPU backend for GPU-accelerated computation with gradient tracking
     type Backend = Autodiff<Wgpu>;
 
-    // Create a default device handle (typically the first available GPU or CPU)
     let device = Default::default();
 
-    // Create a random 32x32 tensor x with default distribution (values between 0 and 1)
     let x: Tensor<Backend, 2> = Tensor::random([32, 32], Distribution::Default, &device);
-    // Create a random 32x32 tensor y and mark it to track gradients (needed for backpropagation)
     let y: Tensor<Backend, 2> = Tensor::random([32, 32], Distribution::Default, &device).require_grad();
 
-    // Add tensors x and y element-wise, creating a new tensor (clones are needed because tensors are moved)
     let tmp = x.clone() + y.clone();
-    // Perform matrix multiplication: multiply the result by tensor x (tmp @ x)
     let tmp = tmp.matmul(x);
-    // Apply exponential function element-wise to each value in the tensor (e^value)
     let tmp = tmp.exp();
 
-    // Compute gradients by performing backpropagation through the computation graph
     let grads = tmp.backward();
-    // Extract the gradient of tensor y from the computed gradients (how much the output changes w.r.t. y)
     let y_grad = y.grad(&grads).unwrap();
-    // Print the gradient tensor to the console and log file
     let grad_msg = format!("[Desktop] Gradient tensor:\n{y_grad}");
     eprintln!("{}", grad_msg);
-    // Also write to log file
-    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("/tmp/pattern-clock-desktop.log") {
+    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("/tmp/burn-gradient-demo-app-desktop.log") {
         use std::io::Write;
         let _ = writeln!(file, "{}", grad_msg);
         let _ = file.flush();

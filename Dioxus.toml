@@ -9,7 +9,7 @@ default_height = 800
 resizable = false
 
 # HTML title tag content
-title = "pattern-clock"
+title = "burn-gradient-demo-app"
 
 # Skip WASM builds - desktop-only app
 # When using --platform desktop, Dioxus will skip WASM compilation

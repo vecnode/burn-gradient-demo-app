@@ -1,24 +1,22 @@
-# pattern-clock
+# burn-gradient-demo-app
 
-Lightweight desktop ML cross-platform application.
+Lightweight desktop tensor gradient demo built with Dioxus, Burn, and Ractor.
 
 ## Dependencies
 
 - dioxus
 - ractor
 - burn
-- ffmpeg
 
-API Tests in folder `bruno/`
 
-## Serving App
+## License
+
+MIT
+
+## Reproduce
 
 ```sh
-# ===============================================
-# Ubuntu
-# ===============================================
-
-# Desktop app
+# Desktop app (Ubuntu)
 dx serve
 dx serve --platform desktop
 # ===============================================

@@ -1,55 +1,9 @@
 /* App-wide styling */
 body {
-    background-color: #b6b6b6;
+    background-color: #2f3338;
     color: #ffffff;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     margin: 20px;
-}
-
-#header {
-    width: 100%;
-}
-
-#app-header {
-    font-size: 14px;
-    width: 90%;
-    display: flex;
-    align-items: center;
-    padding: 10px 20px;
-    background-color: #1e222d;
-    color: #cacaca;
-    border-radius: 4px;
-}
-
-
-
-/* Echo */
-#echo {
-    width: 240px;
-    margin-top: 10px;
-    background-color: #1e222d;
-    padding: 10px;
-    border-radius: 4px;
-}
-
-#echo>h5 {
-    margin: 0px 0px 15px 0px;
-}
-
-#echo>input {
-    border: none;
-    border-bottom: 1px white solid;
-    background-color: transparent;
-    color: #ffffff;
-    transition: border-bottom-color 0.2s ease;
-    outline: none;
-    display: block;
-    padding: 0px 0px 5px 0px;
-    width: 100%;
-}
-
-#echo>input:focus {
-    border-bottom-color: #09ff00;
 }
 
 
