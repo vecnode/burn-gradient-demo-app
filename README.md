@@ -8,11 +8,6 @@ Lightweight desktop tensor gradient demo built with Dioxus, Burn, and Ractor.
 - ractor
 - burn
 
-
-## License
-
-MIT
-
 ## Reproduce
 
 ```sh
@@ -21,3 +16,8 @@ dx serve
 dx serve --platform desktop
 # ===============================================
 ```
+
+## License
+
+MIT
+
