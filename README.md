@@ -2,6 +2,8 @@
 
 Lightweight desktop tensor gradient demo built with Dioxus, Burn, and Ractor.
 
+![demo_image](./assets/image_1.png)
+
 ## Dependencies
 
 - dioxus
@@ -14,7 +16,6 @@ Lightweight desktop tensor gradient demo built with Dioxus, Burn, and Ractor.
 # Desktop app (Ubuntu)
 dx serve
 dx serve --platform desktop
-# ===============================================
 ```
 
 ## License
